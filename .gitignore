@@ -1,6 +1,8 @@
 ci.db
 config/application.yml
 config/database.yml
+config/puma.rb
+config/resque.yml
 log/*
 tmp/*
 *.pid
@@ -10,3 +12,8 @@ tmp/*
 .powrc
 .rvmrc
 coverage/*
+.ruby-version
+<<<<<<< HEAD
+.secret
+/vendor
+.DS_Store

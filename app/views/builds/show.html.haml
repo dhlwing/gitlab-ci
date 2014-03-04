@@ -1,7 +1,7 @@
-%h3
-  Project: #{@project.name}
-  .right
-    %a.btn.btn-small{href: edit_project_path(@project)}
+%h4.page-title
+  = @project.name
+  .pull-right
+    = link_to edit_project_path(@project), class: "btn btn-default btn-small" do
       %i.icon-edit.icon-white
       Edit Project
 
@@ -9,95 +9,101 @@
   = link_to project_path(@project) do
     &larr; Back to project builds
 %hr
-.row-fluid
-  .span9
-    .alert{class: build_status_alert_class(@build)}
+
+.row
+  .col-md-9
+    .build-head.alert{class: build_status_alert_class(@build)}
       %h4
-        Build ##{@build.short_sha}
-        %small= "(#{@build.ref})"
-      .right
-        %span= @build.updated_at.stamp('19:00 Aug 27')
-      = @build.status
+        Build for commit
+        %code #{@build.short_sha}
+        from
+
+        = link_to project_path(@build.project, ref: @build.ref) do
+          %span.label.label-primary= "#{@build.ref}"
+
+        - if @build.duration
+          .pull-right
+            %span
+              %i.icon-time
+              #{distance_of_time_in_words @build.duration}
+
+      .clearfix
+        = @build.status
+        .pull-right
+          = @build.updated_at.stamp('19:00 Aug 27')
 
 
-    .row-fluid
-      .span6
-        %fieldset
-          %legend
-            Build
-            - if @build.active?
-              .right
-                = link_to "Cancel", cancel_project_build_path(@project, @build.id), class: 'btn btn-small btn-danger'
-          %p
-            %b Status:
-            #{@build.status}
-          - if @build.started_at
-            %p
-              %b Duration:
-              #{build_duration @build}
-          - if @build.finished_at
-            %p
-              %b Finished:
-              #{time_ago_in_words(@build.finished_at)} ago
-          %p
-            %b Runner:
-            - if @build.runner
-              = @build.runner.token
-      .span6
-        %fieldset
-          %legend Commit
-          %p
-            %b ID:
-            #{build_commit_link @build}
-          - if @build.compare?
-            %p
-              %b Compare:
-              #{build_compare_link @build}
-          %p
-            %b Branch:
-            #{build_ref_link @build}
-          %p
-            %b Author:
-            #{@build.git_author_name}
-          %p
-            %b Message:
-            #{@build.git_commit_message}
 
     .clearfix
-    - if @build.active?
-      .autoscroll-container.pull-right
-        %button.btn.btn-mini#autoscroll-button{:type => "button", :data => {:state => 'disabled'}} enable autoscroll
-      .clearfix
+      - if @build.active?
+        .autoscroll-container.pull-right
+          %button.btn.btn-default.btn-sm#autoscroll-button{:type => "button", :data => {:state => 'disabled'}} enable autoscroll
+        .clearfix
     %pre.trace#build-trace
-      = preserve do
-        = raw @build.trace_html
+      %code.bash
+        = preserve do
+          = raw @build.trace_html
 
-  .span3
-    .builds
-      %h5 Builds for #{@build.short_sha}:
-      %table.builds
-        %thead
-          %tr
-            %th Build ID
-            %th Status
-        - @builds.each_with_index do |build, i|
-          %tr.build.alert{class: build_status_alert_class(build)}
-            %td
-              = link_to project_build_path(@project, build, bid: build.id ) do
-                %span #{i+=1} &ndash; #{build.short_sha}
-            %td.status= build.status
+  .col-md-3
+    .build-widget
+      %h4.title
+        Build
+        .pull-right
+          - if @build.active?
+            = link_to "Cancel", cancel_project_build_path(@project, @build), class: 'btn btn-sm btn-danger'
+          - else
+            = link_to "Retry", retry_project_build_path(@project, @build), class: 'btn btn-sm btn-primary', method: :post
+
+      - if @build.duration
+        %p
+          %span.attr-name Duration:
+          #{distance_of_time_in_words @build.duration}
+      %p
+        %span.attr-name Created:
+        #{time_ago_in_words(@build.created_at)} ago
+      - if @build.finished_at
+        %p
+          %span.attr-name Finished:
+          #{time_ago_in_words(@build.finished_at)} ago
+      %p
+        %span.attr-name Runner:
+        - if @build.runner
+          \##{@build.runner.id}
+
+    .build-widget
+      %h4.title
+        Commit
+        .pull-right
+          %small #{build_commit_link @build}
+
+      - if @build.compare?
+        %p
+          %span.attr-name Compare:
+          #{build_compare_link @build}
+      %p
+        %span.attr-name Branch:
+        #{build_ref_link @build}
+      %p
+        %span.attr-name Author:
+        #{@build.git_author_name}
+      %p
+        %span.attr-name Message:
+        #{@build.git_commit_message}
+
+    - if @builds.present?
+      .build-widget
+        %h4.title #{pluralize(@builds.count, "other build")} for #{@build.short_sha}:
+        %table.builds
+          - @builds.each_with_index do |build, i|
+            %tr.build.alert{class: build_status_alert_class(build)}
+              %td
+                = link_to build_url(build) do
+                  %span #{i+=1} &ndash; #{build.short_sha}
+              %td.status= build.status
 
 
-      = paginate @builds
-%br
-.right
-  %a.btn.btn-small{href: edit_project_path(@project)}
-    %i.icon-edit.icon-white
-    Edit Project
+        = paginate @builds
 
 
-- if @build.active?
-  :javascript
-    $(function(){
-      getBuild('#{project_build_path(@project, @build)}', '#{@build.id}');
-    })
+:javascript
+  new Build("#{build_url(@build)}", "#{@build.status}")

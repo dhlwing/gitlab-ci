@@ -1,12 +1,4 @@
 module BuildsHelper
-  def build_duration build
-    if build.started?
-      from = build.started_at
-      to = build.finished_at || Time.now
-      distance_of_time_in_words(from, to)
-    end
-  end
-
   def build_ref_link build
     if build.gitlab?
       gitlab_ref_link build.project, build.ref
@@ -31,5 +23,9 @@ module BuildsHelper
 
   def build_link build
     link_to(build.short_sha, project_build_path(build.project, build))
+  end
+
+  def build_url(build)
+    project_build_url(build.project, build)
   end
 end

@@ -1,13 +1,16 @@
 class Network
   include HTTParty
 
+  API_PREFIX = '/api/v3/'
+
   def authenticate(url, api_opts)
     opts = {
       body: api_opts.to_json,
       headers: {"Content-Type" => "application/json"},
     }
 
-    response = self.class.post(url + api_prefix + 'session.json', opts)
+    endpoint = File.join(url, API_PREFIX, 'session.json')
+    response = self.class.post(endpoint, opts)
 
     if response.code == 201
       response.parsed_response
@@ -16,9 +19,26 @@ class Network
     end
   end
 
+  def authenticate_by_token(url, api_opts)
+    opts = {
+      query: api_opts,
+      headers: {"Content-Type" => "application/json"},
+    }
+
+    endpoint = File.join(url, API_PREFIX, 'user.json')
+    response = self.class.get(endpoint, opts)
+
+    if response.code == 200
+      response.parsed_response
+    else
+      nil
+    end
+  end
+
+
   def projects(url, api_opts, scope = :owned)
     opts = {
-      query: api_opts.merge(per_page: 1000),
+      query: api_opts,
       headers: {"Content-Type" => "application/json"},
     }
 
@@ -28,7 +48,8 @@ class Network
              'projects.json'
             end
 
-    response = self.class.get(url + api_prefix + query, opts)
+    endpoint = File.join(url, API_PREFIX, query)
+    response = self.class.get(endpoint, opts)
 
     if response.code == 200
       response.parsed_response
@@ -37,24 +58,55 @@ class Network
     end
   end
 
-  def add_deploy_key(url, project_id, api_opts)
+  def project(url, api_opts, project_id)
     opts = {
-      body: api_opts.to_json,
+      query: api_opts,
       headers: {"Content-Type" => "application/json"},
     }
 
-    response = self.class.post(url + api_prefix + "projects/#{project_id}/keys.json", opts)
+    query = "projects/#{project_id}.json"
 
-    if response.code == 201
+    endpoint = File.join(url, API_PREFIX, query)
+    response = self.class.get(endpoint, opts)
+
+    if response.code == 200
       response.parsed_response
     else
       nil
     end
   end
 
-  private
+  def enable_ci(url, project_id, ci_opts, token)
+    opts = {
+      body: ci_opts.to_json,
+      headers: {"Content-Type" => "application/json"},
+    }
 
-  def api_prefix
-    '/api/v3/'
+    query = "projects/#{project_id}/services/gitlab-ci.json?private_token=#{token}"
+    endpoint = File.join(url, API_PREFIX, query)
+    response = self.class.put(endpoint, opts)
+
+    if response.code == 200
+      true
+    else
+      nil
+    end
+  end
+
+  def disable_ci(url, project_id, token)
+    opts = {
+      headers: {"Content-Type" => "application/json"},
+    }
+
+    query = "projects/#{project_id}/services/gitlab-ci.json?private_token=#{token}"
+
+    endpoint = File.join(url, API_PREFIX, query)
+    response = self.class.delete(endpoint, opts)
+
+    if response.code == 200
+      response.parsed_response
+    else
+      nil
+    end
   end
 end

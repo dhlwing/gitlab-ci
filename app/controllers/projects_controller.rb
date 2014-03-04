@@ -1,24 +1,40 @@
 class ProjectsController < ApplicationController
-  before_filter :authenticate_user!, except: [:build, :status, :index, :show]
-  before_filter :project, only: [:build, :integration, :show, :status, :edit, :update, :destroy, :charts]
+  before_filter :authenticate_user!, except: [:build, :badge, :index, :show]
+  before_filter :project, only: [:build, :integration, :show, :badge, :edit, :update, :destroy]
+  before_filter :authorize_access_project!, except: [:build, :gitlab, :badge, :index, :show, :new, :create]
   before_filter :authenticate_token!, only: [:build]
-  before_filter :no_cache, only: [:status]
+  before_filter :no_cache, only: [:badge]
 
   layout 'project', except: [:index, :gitlab]
 
   def index
-    @projects = Project.order('name ASC')
-    @projects = @projects.public unless current_user
-    @projects  = @projects.page(params[:page]).per(20)
+    @projects = Project.public_only.page(params[:page]) unless current_user
+  end
+
+  def gitlab
+    current_user.reset_cache if params[:reset_cache]
+    @page = (params[:page] || 1).to_i
+    @per_page = 100
+    @gl_projects = current_user.gitlab_projects(@page, @per_page)
+    @projects = Project.where(gitlab_id: @gl_projects.map(&:id)).order('name ASC')
+    @total_count = @gl_projects.size
+    @gl_projects.reject! { |gl_project| @projects.map(&:gitlab_id).include?(gl_project.id) }
+  rescue
+    @error = 'Failed to fetch GitLab projects'
   end
 
   def show
-    unless @project.public || current_user
-      authenticate_user! and return
+    unless @project.public
+      unless current_user
+        redirect_to(new_user_sessions_path) and return
+      end
+
+      unless current_user.can_access_project?(@project.gitlab_id)
+        page_404 and return
+      end
     end
 
     @ref = params[:ref]
-
 
     @builds = @project.builds
     @builds = @builds.where(ref: @ref) if @ref
@@ -29,20 +45,9 @@ class ProjectsController < ApplicationController
   end
 
   def create
-    project = YAML.load(params[:project])
+    @project = CreateProjectService.new.execute(current_user, params[:project], project_url(":project_id"))
 
-    params = {
-      name: project.name_with_namespace,
-      gitlab_id: project.id,
-      gitlab_url: project.web_url,
-      scripts: 'ls -la',
-      default_ref: project.default_branch || 'master',
-      ssh_url_to_repo: project.ssh_url_to_repo
-    }
-
-    @project = Project.new(params)
-
-    if @project.save
+    if @project.persisted?
       redirect_to project_path(@project, show_guide: true), notice: 'Project was successfully created.'
     else
       redirect_to :back, alert: 'Cannot save project'
@@ -62,57 +67,27 @@ class ProjectsController < ApplicationController
 
   def destroy
     project.destroy
+    Network.new.disable_ci(current_user.url, project.gitlab_id, current_user.private_token)
 
     redirect_to projects_url
   end
 
   def build
-   # Ignore remove branch push
-   return head(200) if params[:after] =~ /^00000000/
+    @build = CreateBuildService.new.execute(@project, params.dup)
 
-   # Support payload (like github) push
-   build_params = if params[:payload]
-                    HashWithIndifferentAccess.new(JSON.parse(params[:payload]))
-                  else
-                    params
-                  end.dup
-
-   @build = @project.register_build(build_params)
-
-   if @build
-     head 200
-   else
-     head 500
-   end
-  rescue
-    head 500
+    if @build.persisted?
+      head 201
+    else
+      head 400
+    end
   end
 
   # Project status badge
   # Image with build status for sha or ref
-  def status
-    image_name = if params[:sha]
-                   @project.sha_status_image(params[:sha])
-                 elsif params[:ref]
-                   @project.status_image(params[:ref])
-                 else
-                   'unknown.png'
-                 end
+  def badge
+    image = ImageForBuildService.new.execute(@project, params)
 
-    send_file Rails.root.join('public', image_name), filename: image_name, disposition: 'inline'
-  end
-
-  def charts
-    @charts = {}
-    @charts[:week] = Charts::WeekChart.new(@project)
-    @charts[:month] = Charts::MonthChart.new(@project)
-    @charts[:year] = Charts::YearChart.new(@project)
-  end
-
-  def gitlab
-    @projects = Project.from_gitlab(current_user)
-  rescue
-    @error = 'Failed to fetch GitLab projects'
+    send_file image.path, filename: image.name, disposition: 'inline'
   end
 
   protected

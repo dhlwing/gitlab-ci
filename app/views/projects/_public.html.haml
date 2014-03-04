@@ -1,0 +1,14 @@
+= content_for :title do
+  %h3.project-title
+    Public projects
+.projects
+  %table.table
+    %tr
+      %th ID
+      %th Name
+      %th Last build
+      %th Access
+      %th Builds
+    = render @projects
+= paginate @projects
+

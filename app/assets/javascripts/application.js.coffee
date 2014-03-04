@@ -11,16 +11,32 @@
 # GO AFTER THE REQUIRES BELOW.
 #
 #= require jquery
+#= require bootstrap
 #= require jquery_ujs
+#= require turbolinks
+#= require jquery.turbolinks
 #= require_tree .
 #
 #
 
-$ ->
-  $('.edit-runner-link').on 'click', ->
-    descr = $(this).closest('.runner-description').first()
-    descr.hide()
-    descr.next('.runner-description-form').show()
+$(document).on 'click', '.edit-runner-link', ->
+  descr = $(this).closest('.runner-description').first()
+  descr.hide()
+  descr.next('.runner-description-form').show()
 
-  $('.assign-all-runner').on 'click', ->
-    $(this).replaceWith('<i class="icon-refresh icon-spin"></i> Assign in progres..')
+$(document).on 'click', '.assign-all-runner', ->
+  $(this).replaceWith('<i class="icon-refresh icon-spin"></i> Assign in progress..')
+
+window.startSpinner = ->
+  $('.turbolink-spinner').fadeIn()
+
+window.stopSpinner = ->
+  $('.turbolink-spinner').fadeOut()
+
+window.unbindEvents = ->
+  $(document).unbind('scroll')
+  $(document).off('scroll')
+
+document.addEventListener("page:fetch", startSpinner)
+document.addEventListener("page:fetch", unbindEvents)
+document.addEventListener("page:change", stopSpinner)

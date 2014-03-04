@@ -7,7 +7,7 @@
 #  ref         :string(255)
 #  status      :string(255)
 #  finished_at :datetime
-#  trace       :text(2147483647)
+#  trace       :text
 #  created_at  :datetime         not null
 #  updated_at  :datetime         not null
 #  sha         :string(255)
@@ -25,11 +25,13 @@ class Build < ActiveRecord::Base
   serialize :push_data
 
   attr_accessible :project_id, :ref, :sha, :before_sha,
-    :status, :finished_at, :trace, :started_at, :push_data, :runner_id
+    :status, :finished_at, :trace, :started_at, :push_data, :runner_id, :project_name
 
+  validates :before_sha, presence: true
   validates :sha, presence: true
   validates :ref, presence: true
   validates :status, presence: true
+  validate :valid_commit_sha
 
   scope :running, ->() { where(status: "running") }
   scope :pending, ->() { where(status: "pending") }
@@ -41,9 +43,14 @@ class Build < ActiveRecord::Base
     where('created_at > ?', Date.today - 1.month)
   end
 
+  def self.first_pending
+    pending.where(runner_id: nil).order('created_at ASC').first
+  end
+
   def self.create_from(build)
     new_build = build.dup
     new_build.status = :pending
+    new_build.runner_id = nil
     new_build.save
   end
 
@@ -70,6 +77,13 @@ class Build < ActiveRecord::Base
 
     after_transition any => [:success, :failed, :canceled] do |build, transition|
       build.update_attributes finished_at: Time.now
+      project = build.project
+
+      if project.email_notification?
+        if build.status.to_sym == :failed || !project.email_only_broken_builds
+          NotificationService.new.build_ended(build)
+        end
+      end
     end
 
     state :pending, value: 'pending'
@@ -77,6 +91,12 @@ class Build < ActiveRecord::Base
     state :failed, value: 'failed'
     state :success, value: 'success'
     state :canceled, value: 'canceled'
+  end
+
+  def valid_commit_sha
+    if self.sha =~ /\A00000000/
+      self.errors.add(:sha, " cant be 00000000 (branch removal)")
+    end
   end
 
   def compare?
@@ -93,6 +113,10 @@ class Build < ActiveRecord::Base
 
   def git_author_name
     commit_data[:author][:name] if commit_data && commit_data[:author]
+  end
+
+  def git_author_email
+    commit_data[:author][:email] if commit_data && commit_data[:author]
   end
 
   def git_commit_message
@@ -112,16 +136,16 @@ class Build < ActiveRecord::Base
     html ||= ''
   end
 
-  def to_param
-    sha
-  end
-
   def started?
     !pending? && !canceled? && started_at
   end
 
   def active?
     running? || pending?
+  end
+
+  def complete?
+    canceled? || success? || failed?
   end
 
   def commands
@@ -136,9 +160,39 @@ class Build < ActiveRecord::Base
     nil
   end
 
+  # Build a clone-able repo url
+  # using http and basic auth
   def repo_url
-    project.ssh_url_to_repo
+    auth = "gitlab-ci-token:#{project.token}@"
+    url = project.gitlab_url + ".git"
+    url.sub(/^https?:\/\//) do |prefix|
+      prefix + auth
+    end
+  end
+
+  def timeout
+    project.timeout
+  end
+
+  def allow_git_fetch
+    project.allow_git_fetch
+  end
+
+  def project_name
+    project.name
+  end
+
+  def project_recipients
+    recipients = project.email_recipients.split(' ')
+    recipients << git_author_email if project.email_add_committer?
+    recipients.uniq
+  end
+
+  def duration
+    if started_at && finished_at
+      finished_at - started_at
+    elsif started_at
+      Time.now - started_at
+    end
   end
 end
-
-

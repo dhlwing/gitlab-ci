@@ -6,8 +6,9 @@ describe "Projects" do
     @project = FactoryGirl.create :project
   end
 
-  describe "GET /projects" do
+  describe "GET /projects", js: true do
     before do
+      stub_js_gitlab_calls
       visit projects_path
     end
 
@@ -32,13 +33,16 @@ describe "Projects" do
     it { page.should have_content 'Build Schedule' }
   end
 
-  describe "GET /projects/:id/stats" do
+  describe "GET /projects/:id/charts" do
     before do
-      visit charts_project_path(@project)
+      visit project_charts_path(@project)
     end
 
-    it { page.should have_content @project.name }
+    it { page.should have_content 'Overall' }
+    it { page.should have_content 'Builds chart for last week' }
+    it { page.should have_content 'Builds chart for last month' }
     it { page.should have_content 'Builds chart for last year' }
+    it { page.should have_content 'Build duration in minutes for last 30 builds' }
   end
 
   describe "GET /projects/:id/details" do
